@@ -18,8 +18,6 @@ class OutputBlock(nn.Module):
             nn.Conv2d(mid_ch//2, mid_ch//2, 3, 1, 1),
             nn.BatchNorm2d(mid_ch//2),
             nn.ReLU(inplace=True)
-
-
             # nn.Sigmoid() 如果使用sigmoid，值被控制在0-1区间，最后计算损失的结果需要乘5，以变为0-5范围以内的数值
         )
         self.fc = nn.Sequential(
@@ -46,14 +44,14 @@ class TimeModel(nn.Module):
         #     self.output_model = OutputBlock(512, 128, 1)
         if model_type == "resnet18":  # 使用resnet前五层网络
             self.model = models.resnet18(pretrained=True)
-            self.model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            # self.model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.base_model = nn.Sequential(*list(self.model.children()))[: 5]
 
             self.output_model = OutputBlock(64, 32, 1)
         elif model_type == "resnet50":
             self.model = models.resnet101(pretrained=False)
-            self.base_model = nn.Sequential(*list(self.model.children()))[: -2]
-            self.output_model = OutputBlock(2048, 256, 1)
+            self.base_model = nn.Sequential(*list(self.model.children()))[: -2]  # 使用resnet除了倒数两层以外的网络
+            self.output_model = OutputBlock(2048, 512, 1)
         elif model_type == "mlp":
             # self.model = nn.Sequential(nn.Linear(2, 1)) # 一层MLP
             # self.model = nn.Sequential(nn.Linear(2, 10), nn.ReLU(), nn.Linear(10, 5), nn.ReLU(), nn.Linear(5, 1))  # 三层MLP
@@ -91,7 +89,7 @@ class TimeModel(nn.Module):
             x = self.base_model(x)
             # batch, ch = x.size(0), x.size(1)
             # x = self.avg_pool(x).view(batch, ch)
-            x = self.avg_pool(x)
+            # x = self.avg_pool(x)
             x = self.output_model(x)
             batch, ch = x.size(0), x.size(1)
             x = x.view(batch, ch)
@@ -115,8 +113,6 @@ class TimeModel(nn.Module):
             x = torch.cat([sehao_feature, sekuai_feature, area_feature], -1)
             x = self.model(x)
             return x
-
-
         elif model_type =="resnet18-mlp":
             img = x[0]
             sehao_feature = x[1]
