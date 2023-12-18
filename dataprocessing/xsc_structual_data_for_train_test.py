@@ -136,7 +136,7 @@ def get_all_data_info(cvs_file_path, whole_json_path, img_root_path):
 
         # 获取每个色块的区块个数占比，以及面积占比;
         # 如果色块数超过最大值，这个样本不考虑;
-        flag, blks_per_color, area_per_color = get_block_info(img_root_path, key, blk_index, total_block_num. blk_color)
+        flag, blks_per_color, area_per_color = get_block_info(img_root_path, key, blk_index, total_block_num[i], blk_color)
         if not flag:
             print(f'file id = {id}, color num={total_color_num}, exceed 120....drop it')
             continue
@@ -179,10 +179,10 @@ if __name__ == '__main__':
     whole_json_path = "../file/whole_original_stru.json"
 
     # 输入的cvs文件
-    # cvs_file_path = "F://MyProject//乐信合作//各类数据//202307pbn时长数据//test_data_8900_with_plan_whole.csv"
+    # cvs_file_path = "..//file//test_data_8900_with_plan_whole.csv"
     cvs_file_path = "..//file//test1.csv"
 
-    img_root_path = "F://MyProject//乐信合作//各类数据//202307pbn时长数据//suoluetu"
+    img_root_path = "F://data//乐信//PBN//PBN_TimePred//suoluetu"
     data = get_all_data_info(cvs_file_path, whole_json_path, img_root_path)
     # 80%的训练数据
     create_train_test_json(data, 0.8)
