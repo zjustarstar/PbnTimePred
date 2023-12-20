@@ -57,7 +57,8 @@ class TimeModel(nn.Module):
             # self.model = nn.Sequential(nn.Linear(2, 10), nn.ReLU(), nn.Linear(10, 5), nn.ReLU(), nn.Linear(5, 1))  # 三层MLP
             # self.model = nn.Sequential(nn.Linear(2, 64), nn.ReLU(), nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 16), nn.ReLU(), nn.Linear(16, 8), nn.ReLU(), nn.Linear(8, 1))  # 六层MLP
             # self.model = nn.Sequential(nn.Linear(23, 64), nn.ReLU(), nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 16), nn.ReLU(), nn.Linear(16, 8), nn.ReLU(), nn.Linear(8, 1))  # 六层MLP
-            self.model = nn.Sequential(nn.Linear(243, 256), nn.ReLU(), nn.Linear(256, 128), nn.ReLU(),nn.Linear(128, 64), nn.ReLU(), nn.Linear(64, 8), nn.ReLU(), nn.Linear(8, 1))
+            self.model = nn.Sequential(nn.Linear(263, 256),  nn.ReLU(), nn.Linear(256, 128),  nn.ReLU(), nn.Linear(128, 64), nn.ReLU(), nn.Linear(64, 8), nn.ReLU(), nn.Linear(8, 1))
+
         elif model_type == "mlp_1":
             self.model_input_area = nn.Sequential(nn.Linear(21, 64), nn.ReLU(), nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 1))
             self.model = nn.Sequential(nn.Linear(3, 64), nn.ReLU(), nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 16), nn.ReLU(), nn.Linear(16, 8), nn.ReLU(), nn.Linear(8, 1))
@@ -101,7 +102,7 @@ class TimeModel(nn.Module):
             area_per_color = x[3].squeeze(-1)
             hint= x[4]
             x = torch.cat([color_num, blocks_num, blk_per_color, area_per_color, hint], -1)
-            print(x.shape)
+            # print(x.shape)
             x = self.model(x)
             return x
         elif model_type == "mlp_1":

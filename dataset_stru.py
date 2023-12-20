@@ -62,11 +62,11 @@ class TimePredictionDataSet_Stru(Dataset):
         hint = self.hint[index]
         time = self.time[index]
 
-        input_color = (torch.from_numpy(np.array(num_color))-83.66)/14.88 # 归一化，减去均值，除以标准差
-        input_blocks = (torch.from_numpy(np.array(num_blocks))-837.555)/102.7576 # 归一化，减去均值，除以标准差
+        input_color = (torch.from_numpy(np.array(num_color))-79.092)/24.377 # 归一化，减去均值，除以标准差
+        input_blocks = (torch.from_numpy(np.array(num_blocks))-834.756)/351.01 # 归一化，减去均值，除以标准差
         input_blk_per_color = torch.from_numpy(np.array(blk_per_color))
         input_area_per_color = torch.from_numpy(np.array(blk_per_color))
-        input_hint = (torch.from_numpy(np.array(num_blocks))-0.394)/0.253
+        input_hint = (torch.from_numpy(np.array(num_blocks))-0.573)/0.442
         input_time = torch.from_numpy(np.array(time))
 
         # print("名称:", img_name, "sehao:", input_sehao, "sekuai:", input_sekuai, "time:", input_time)

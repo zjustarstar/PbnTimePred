@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as np
 from torch.optim import lr_scheduler
 from torchvision import transforms
+from pytorch_optimizer import DiffGrad
 from dataset_stru import TimePredictionDataSet_Stru
 from torch.utils.data import DataLoader
 import networks
@@ -21,9 +22,9 @@ parser.add_argument('--dataset_test',
 # Optimization options
 parser.add_argument('--epochs', default=1000000, type=int, metavar='N',
                     help='number of total epochs to run')
-parser.add_argument('--train_batch', default=4, type=int, metavar='N',
+parser.add_argument('--train_batch', default=25, type=int, metavar='N',
                     help='train batchsize')
-parser.add_argument('--test_batch', default=4, type=int, metavar='N',
+parser.add_argument('--test_batch', default=25, type=int, metavar='N',
                     help='test batchsize')
 parser.add_argument('--lr', '--lr', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
@@ -114,7 +115,7 @@ def train_model(model, model_type, criterion, optimizer, exp_lr_scheduler, early
             hint = hint.cuda().unsqueeze(-1).float()
 
 
-            labels = labels.cuda().unsqueeze(-1)
+            labels = labels.cuda().unsqueeze(-1).float()
             results = model([color_num, blocks_num, blk_per_color, area_per_color, hint], model_type=model_type)
             # results = model(img, model_type=model_type)
             # print(sehao.size(), sekuai.size(), labels.size())
@@ -170,7 +171,7 @@ def train_model(model, model_type, criterion, optimizer, exp_lr_scheduler, early
                 blk_per_color = blk_per_color.cuda().unsqueeze(-1).float()
                 area_per_color = area_per_color.cuda().unsqueeze(-1).float()
                 hint = hint.cuda().unsqueeze(-1).float()
-                labels = labels.cuda().unsqueeze(-1)
+                labels = labels.cuda().unsqueeze(-1).float()
 
                 with torch.no_grad():
                     # results = model(img, model_type=model_type)
@@ -214,16 +215,24 @@ def train_model(model, model_type, criterion, optimizer, exp_lr_scheduler, early
 
 if __name__ == '__main__':
     print("Model :", args.model_name)
+    param_file = "best_checkpoint.pth"
     args.checkpoints_dir = os.path.join(args.checkpoints_dir, args.model_name)
     if not os.path.exists(args.checkpoints_dir):
         os.mkdir(args.checkpoints_dir)
     model = networks.TimeModel(model_type=args.model_name)
+
+    p = os.path.join(args.checkpoints_dir, param_file)
+    if os.path.exists(p):
+        model.load_state_dict(torch.load(p))
+        print(f'load existing model:{p}')
+
     model.cuda()
     model.train()
 
     criterion = nn.L1Loss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=210, gamma=1)
-    early_stopping = EarlyStopping(patience=100, verbose=False, path=os.path.join(args.checkpoints_dir, "best_checkpoint.pth"))
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = DiffGrad(model.parameters(), lr=args.lr, betas=(0.5,0.9))
+    exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=200, gamma=1)
+    early_stopping = EarlyStopping(patience=300, verbose=False, path=os.path.join(args.checkpoints_dir, param_file))
     train_model(model, args.model_name, criterion, optimizer, exp_lr_scheduler, early_stopping, args.save_interval, args.test_interval, args.checkpoints_dir, args.epochs)
 

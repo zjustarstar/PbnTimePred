@@ -9,7 +9,7 @@ import numpy as np
 import os
 
 # 最多120种颜色?
-MAX_COLORS = 120
+MAX_COLORS = 130
 
 def get_color_based16(clr_str):
     r = int(clr_str[0:2], 16)
@@ -30,7 +30,7 @@ def get_block_info(img_root, id, blocks_list, total_blocks_num, colors_list):
     img_path = os.path.join(img_root, id)
     if not os.path.exists(img_path):
         print(f'{img_path} do not exist!')
-        return
+        return False, 0, 0
 
     im = Image.open(img_path)
     if im.mode == 'RGBA':
@@ -73,7 +73,7 @@ def get_block_info(img_root, id, blocks_list, total_blocks_num, colors_list):
         t = [0] * margin
         blks_per_color = blks_per_color + t
         area_per_color = area_per_color + t
-    else:
+    elif margin < 0:
         flag = False
 
     return flag, blks_per_color, area_per_color
@@ -124,8 +124,8 @@ def get_all_data_info(cvs_file_path, whole_json_path, img_root_path):
 
     # 读取色号色块特征和时长
     data = {}
-    for i in range(len(ids)):
-        print(f'processing {i}/{len(ids)}...')
+    for i in range(len(ids)-8000):
+        print(f'processing {i}/{len(ids)-8000}...')
         id = ids[i]
         key = str(id) + ".png"
         if key not in plan:
@@ -138,7 +138,7 @@ def get_all_data_info(cvs_file_path, whole_json_path, img_root_path):
         # 如果色块数超过最大值，这个样本不考虑;
         flag, blks_per_color, area_per_color = get_block_info(img_root_path, key, blk_index, total_block_num[i], blk_color)
         if not flag:
-            print(f'file id = {id}, color num={total_color_num}, exceed 120....drop it')
+            print(f'file id = {id}, color num={total_color_num[i]}, exceed {MAX_COLORS}....drop it')
             continue
 
         data[ids[i] + ".png"] = [total_color_num[i], total_block_num[i], blks_per_color, area_per_color, hint[i], time[i]]
@@ -179,8 +179,8 @@ if __name__ == '__main__':
     whole_json_path = "../file/whole_original_stru.json"
 
     # 输入的cvs文件
-    # cvs_file_path = "..//file//test_data_8900_with_plan_whole.csv"
-    cvs_file_path = "..//file//test1.csv"
+    cvs_file_path = "..//file//test_data_8900_with_plan_whole.csv"
+    # cvs_file_path = "..//file//test1.csv"
 
     img_root_path = "F://data//乐信//PBN//PBN_TimePred//suoluetu"
     data = get_all_data_info(cvs_file_path, whole_json_path, img_root_path)
