@@ -38,6 +38,7 @@ class TimePredictionDataSet_Stru(Dataset):
         self.hint = []
         self.blk_per_color = []
         self.area_per_color = []
+        self.small_area_num = []
         with open(dataset_path, "r") as r:
             data = json.load(r)
 
@@ -48,8 +49,9 @@ class TimePredictionDataSet_Stru(Dataset):
             self.num_blocks.append(value[1])
             self.blk_per_color.append(value[2])
             self.area_per_color.append(value[3])
-            self.hint.append(value[4])
-            self.time.append(value[5])
+            self.small_area_num.append(value[4])
+            self.hint.append(value[5])
+            self.time.append(value[6])
 
     def __len__(self):
         return len(self.img_name)
@@ -59,13 +61,15 @@ class TimePredictionDataSet_Stru(Dataset):
         num_blocks = self.num_blocks[index]
         blk_per_color = self.blk_per_color[index]
         area_per_color = self.area_per_color[index]
+        small_area_num = self.small_area_num[index]
         hint = self.hint[index]
         time = self.time[index]
 
-        input_color = (torch.from_numpy(np.array(num_color))-79.092)/24.377 # 归一化，减去均值，除以标准差
+        input_color = (torch.from_numpy(np.array(num_color))-79.09)/24.377 # 归一化，减去均值，除以标准差
         input_blocks = (torch.from_numpy(np.array(num_blocks))-834.756)/351.01 # 归一化，减去均值，除以标准差
         input_blk_per_color = torch.from_numpy(np.array(blk_per_color))
-        input_area_per_color = torch.from_numpy(np.array(blk_per_color))
+        input_area_per_color = torch.from_numpy(np.array(area_per_color))
+        input_small_area_num = torch.from_numpy(np.array(small_area_num))
         input_hint = (torch.from_numpy(np.array(num_blocks))-0.573)/0.442
         input_time = torch.from_numpy(np.array(time))
 
@@ -73,4 +77,4 @@ class TimePredictionDataSet_Stru(Dataset):
         # raise
 
         # torch.zeros(2, 2)用来占位，不用管
-        return torch.zeros(2, 2), input_color, input_blocks, input_blk_per_color, input_area_per_color, input_hint, input_time
+        return torch.zeros(2, 2), input_color, input_blocks, input_blk_per_color, input_area_per_color, input_small_area_num,input_hint, input_time

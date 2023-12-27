@@ -3,7 +3,6 @@ import torch.nn as nn
 import numpy as np
 from torch.optim import lr_scheduler
 from torchvision import transforms
-from pytorch_optimizer import DiffGrad
 from dataset_stru import TimePredictionDataSet_Stru
 from torch.utils.data import DataLoader
 import networks
@@ -22,9 +21,9 @@ parser.add_argument('--dataset_test',
 # Optimization options
 parser.add_argument('--epochs', default=1000000, type=int, metavar='N',
                     help='number of total epochs to run')
-parser.add_argument('--train_batch', default=25, type=int, metavar='N',
+parser.add_argument('--train_batch', default=20, type=int, metavar='N',
                     help='train batchsize')
-parser.add_argument('--test_batch', default=25, type=int, metavar='N',
+parser.add_argument('--test_batch', default=20, type=int, metavar='N',
                     help='test batchsize')
 parser.add_argument('--lr', '--lr', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
@@ -46,11 +45,12 @@ parser.add_argument('--gpu-id', default='0', type=str,
 args = parser.parse_args()
 
 
-
 trainset = TimePredictionDataSet_Stru(args.dataset_train)
 trainloader = DataLoader(trainset, batch_size=args.train_batch, shuffle=True, num_workers=0, drop_last=True)
+print(f"train size={len(trainloader.dataset)}")
 testset = TimePredictionDataSet_Stru(args.dataset_test)
 testloader = DataLoader(testset, batch_size=args.test_batch, shuffle=True, num_workers=0, drop_last=False)
+print(f"test size={len(testloader.dataset)}")
 dataloaders = {'train': trainloader, 'val': testloader}
 
 
@@ -105,18 +105,17 @@ def train_model(model, model_type, criterion, optimizer, exp_lr_scheduler, early
         true_num_120 = 0
         true_num_180 = 0
 
-        for img, color_num, blocks_num, blk_per_color, area_per_color, hint, labels in dataloaders['train']:
-            img = img.cuda() # 占位，不用管
+        for img, color_num, blocks_num, blk_per_color, area_per_color, small_area_num,hint, labels in dataloaders['train']:
             # 色号，色块，面积分布特征，位置分布特征，色号对应的色块数量分布特征
-            color_num = color_num.cuda().unsqueeze(-1)
-            blocks_num = blocks_num.cuda().unsqueeze(-1)
-            blk_per_color = blk_per_color.cuda().unsqueeze(-1).float()
-            area_per_color = area_per_color.cuda().unsqueeze(-1).float()
-            hint = hint.cuda().unsqueeze(-1).float()
+            color_num = color_num.unsqueeze(-1)
+            blocks_num = blocks_num.unsqueeze(-1)
+            blk_per_color = blk_per_color.unsqueeze(-1).float()
+            area_per_color = area_per_color.unsqueeze(-1).float()
+            small_area_num = small_area_num.unsqueeze(-1).float()
+            hint = hint.unsqueeze(-1).float()
 
-
-            labels = labels.cuda().unsqueeze(-1).float()
-            results = model([color_num, blocks_num, blk_per_color, area_per_color, hint], model_type=model_type)
+            labels = labels.unsqueeze(-1)
+            results = model([color_num, blocks_num, blk_per_color, area_per_color, small_area_num], model_type=model_type)
             # results = model(img, model_type=model_type)
             # print(sehao.size(), sekuai.size(), labels.size())
             # results = model([sehao, sekuai], model_type=model_type)
@@ -135,7 +134,6 @@ def train_model(model, model_type, criterion, optimizer, exp_lr_scheduler, early
 
             results = results.squeeze(-1).detach().cpu().numpy()
             labels = labels.detach().squeeze().cpu().numpy()
-
 
             temp = np.abs(results - labels)
             num_60 = np.sum(temp <= 60)
@@ -164,18 +162,18 @@ def train_model(model, model_type, criterion, optimizer, exp_lr_scheduler, early
             true_num_60 = 0
             true_num_120 = 0
             true_num_180 = 0
-            for img, color_num, blocks_num, blk_per_color, area_per_color, hint, labels in dataloaders['val']:
-                img = img.cuda()
-                color_num = color_num.cuda().unsqueeze(-1)
-                blocks_num = blocks_num.cuda().unsqueeze(-1)
-                blk_per_color = blk_per_color.cuda().unsqueeze(-1).float()
-                area_per_color = area_per_color.cuda().unsqueeze(-1).float()
-                hint = hint.cuda().unsqueeze(-1).float()
-                labels = labels.cuda().unsqueeze(-1).float()
+            for img, color_num, blocks_num, blk_per_color, area_per_color, small_area_num, hint, labels in dataloaders['val']:
+                color_num = color_num.unsqueeze(-1)
+                blocks_num = blocks_num.unsqueeze(-1)
+                blk_per_color = blk_per_color.unsqueeze(-1).float()
+                area_per_color = area_per_color.unsqueeze(-1).float()
+                small_area_num = small_area_num.unsqueeze(-1).float()
+                hint = hint.unsqueeze(-1).float()
+                labels = labels.unsqueeze(-1)
 
                 with torch.no_grad():
                     # results = model(img, model_type=model_type)
-                    results = model([color_num, blocks_num, blk_per_color, area_per_color, hint], model_type=model_type)
+                    results = model([color_num, blocks_num, blk_per_color, area_per_color, small_area_num], model_type=model_type)
                     results = results.float()
                     # print(results)
                     # results = results.squeeze(-1)
@@ -207,6 +205,7 @@ def train_model(model, model_type, criterion, optimizer, exp_lr_scheduler, early
             # 若满足 early stopping 要求
             if early_stopping.early_stop:
                 print("Early stopping")
+                print(f"min MAE={early_stopping.val_loss_min}")
                 # 结束模型训练
                 break
 
@@ -215,24 +214,15 @@ def train_model(model, model_type, criterion, optimizer, exp_lr_scheduler, early
 
 if __name__ == '__main__':
     print("Model :", args.model_name)
-    param_file = "best_checkpoint.pth"
     args.checkpoints_dir = os.path.join(args.checkpoints_dir, args.model_name)
     if not os.path.exists(args.checkpoints_dir):
         os.mkdir(args.checkpoints_dir)
     model = networks.TimeModel(model_type=args.model_name)
-
-    p = os.path.join(args.checkpoints_dir, param_file)
-    if os.path.exists(p):
-        model.load_state_dict(torch.load(p))
-        print(f'load existing model:{p}')
-
-    model.cuda()
     model.train()
 
     criterion = nn.L1Loss()
-    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    optimizer = DiffGrad(model.parameters(), lr=args.lr, betas=(0.5,0.9))
-    exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=200, gamma=1)
-    early_stopping = EarlyStopping(patience=300, verbose=False, path=os.path.join(args.checkpoints_dir, param_file))
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=70, gamma=0.1)
+    early_stopping = EarlyStopping(patience=300, verbose=False, path=os.path.join(args.checkpoints_dir, "best_checkpoint.pth"))
     train_model(model, args.model_name, criterion, optimizer, exp_lr_scheduler, early_stopping, args.save_interval, args.test_interval, args.checkpoints_dir, args.epochs)
 
