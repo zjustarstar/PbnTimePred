@@ -1,6 +1,7 @@
 import torch.nn
 import torch.nn as nn
 import torchvision.models as models
+import timm
 
 
 class OutputBlock(nn.Module):
@@ -57,8 +58,7 @@ class TimeModel(nn.Module):
             # self.model = nn.Sequential(nn.Linear(2, 10), nn.ReLU(), nn.Linear(10, 5), nn.ReLU(), nn.Linear(5, 1))  # 三层MLP
             # self.model = nn.Sequential(nn.Linear(2, 64), nn.ReLU(), nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 16), nn.ReLU(), nn.Linear(16, 8), nn.ReLU(), nn.Linear(8, 1))  # 六层MLP
             # self.model = nn.Sequential(nn.Linear(23, 64), nn.ReLU(), nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 16), nn.ReLU(), nn.Linear(16, 8), nn.ReLU(), nn.Linear(8, 1))  # 六层MLP
-            self.model = nn.Sequential(nn.Linear(263, 256),  nn.ReLU(), nn.Linear(256, 128),  nn.ReLU(), nn.Linear(128, 64), nn.ReLU(), nn.Linear(64, 8), nn.ReLU(), nn.Linear(8, 1))
-
+            self.model = nn.Sequential(nn.Linear(332, 128),nn.ReLU(), nn.Dropout(0.1), nn.Linear(128, 64), nn.ReLU(), nn.Linear(64, 8), nn.ReLU(), nn.Linear(8, 1))
         elif model_type == "mlp_1":
             self.model_input_area = nn.Sequential(nn.Linear(21, 64), nn.ReLU(), nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 1))
             self.model = nn.Sequential(nn.Linear(3, 64), nn.ReLU(), nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 16), nn.ReLU(), nn.Linear(16, 8), nn.ReLU(), nn.Linear(8, 1))
@@ -74,6 +74,22 @@ class TimeModel(nn.Module):
             #                            nn.Linear(8, 1))  # 六层MLP
 
             self.mlp_model = nn.Sequential(nn.Linear(3, 64), nn.ReLU(), nn.Dropout(0.1), nn.Linear(64, 16), nn.ReLU(), nn.Dropout(0.1), nn.Linear(16,1))
+        elif model_type == "vit":
+            self.model = timm.create_model('vit_base_patch32_384',
+                                           checkpoint_path='./checkpoints/vit/pytorch_model.bin', pretrained=True)
+            self.model.head = nn.Linear(self.model.head.in_features, 1)
+            self.model.blocks = torch.nn.Sequential(*(list(self.model.children())[0:3]))  # 只取前三个block
+            # # 最终输出的特征维度是1
+            # self.model.blocks.add_module("final_layer", nn.Linear(768, 1))
+            # self.model.blocks[0].mlp.drop = torch.nn.Dropout(p=0.3, inplace=False)
+            # 第一层增加dropout，防止过拟合
+            self.model.blocks[0] = nn.Sequential(
+                            nn.Linear(768, 1024),
+                            nn.Dropout(p=0.1),
+                            nn.GELU(),
+                            nn.Linear(1024, 768),
+                            nn.Dropout(p=0.1)
+            )
         else:
             raise Exception("Please select a model")
 
@@ -100,9 +116,10 @@ class TimeModel(nn.Module):
             blocks_num = x[1]
             blk_per_color = x[2].squeeze(-1)
             area_per_color = x[3].squeeze(-1)
-            hint= x[4]
-            x = torch.cat([color_num, blocks_num, blk_per_color, area_per_color, hint], -1)
-            # print(x.shape)
+            small_area_num = x[4].squeeze(-1)
+            # hint= x[5]
+            x = torch.cat([color_num, blocks_num, blk_per_color, area_per_color, small_area_num], -1)
+
             x = self.model(x)
             return x
         elif model_type == "mlp_1":
@@ -130,6 +147,9 @@ class TimeModel(nn.Module):
             x = self.output_model(x)
             batch, ch = x.size(0), x.size(1)
             x = x.view(batch, ch)
+            return x
+        elif model_type == 'vit':
+            x = self.model(x)
             return x
         else:
             raise Exception("Please select a model")
