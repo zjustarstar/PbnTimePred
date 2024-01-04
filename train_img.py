@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch.optim import lr_scheduler
-from dataset_img import PbnImgDataSet
+from dataset_img import PbnImgDataSet, PbnImgDataSet_Test
 from torch.utils.data import DataLoader
 import networks
 import argparse
@@ -20,9 +20,9 @@ parser.add_argument('--dataset_test',
 # Optimization options
 parser.add_argument('--epochs', default=1000000, type=int, metavar='N',
                     help='number of total epochs to run')
-parser.add_argument('--train_batch', default=4, type=int, metavar='N',
+parser.add_argument('--train_batch', default=10, type=int, metavar='N',
                     help='train batchsize')
-parser.add_argument('--test_batch', default=4, type=int, metavar='N',
+parser.add_argument('--test_batch', default=10, type=int, metavar='N',
                     help='test batchsize')
 parser.add_argument('--lr', '--lr', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
@@ -35,7 +35,7 @@ parser.add_argument('--save_interval', default=30, type=int, metavar='N',
                     help='save every X interval ')
 
 # Architecture
-parser.add_argument('--model_name', default='resnet50', type=str)
+parser.add_argument('--model_name', default='resnet18', type=str)
 
 # Device options
 parser.add_argument('--gpu-id', default='0', type=str,
@@ -43,10 +43,12 @@ parser.add_argument('--gpu-id', default='0', type=str,
 args = parser.parse_args()
 
 
-trainset = PbnImgDataSet(dataset_path=args.dataset_train)
+trainset = PbnImgDataSet(dataset_path=args.dataset_train, model='resnet')
 trainloader = DataLoader(trainset, batch_size=args.train_batch, shuffle=True, num_workers=0, drop_last=True)
-testset = PbnImgDataSet(dataset_path=args.dataset_test)
+print(f'train size = {len(trainloader.dataset)}')
+testset = PbnImgDataSet_Test(dataset_path=args.dataset_test)
 testloader = DataLoader(testset, batch_size=args.test_batch, shuffle=True, num_workers=0)
+print(f'test size = {len(testloader.dataset)}')
 dataloaders = {'train': trainloader, 'val': testloader}
 
 
@@ -100,6 +102,7 @@ def train_model(model, model_type, criterion, optimizer, exp_lr_scheduler, early
         true_num_180 = 0
 
         for img, labels in dataloaders['train']:
+
             if torch.cuda.is_available():
                 labels = labels.cuda()
                 img = img.cuda()
@@ -152,6 +155,7 @@ def train_model(model, model_type, criterion, optimizer, exp_lr_scheduler, early
 
                 with torch.no_grad():
                     results = model(img, model_type=model_type)
+                    results = torch.squeeze(results, 1)
                     results = results.float()
                     # print(results)
                     # results = results.squeeze(-1)
@@ -200,7 +204,7 @@ if __name__ == '__main__':
 
     criterion = nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=210, gamma=1)
-    early_stopping = EarlyStopping(patience=100, verbose=False, path=os.path.join(args.checkpoints_dir, "best_checkpoint.pth"))
+    exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.95)
+    early_stopping = EarlyStopping(patience=40, verbose=False, path=os.path.join(args.checkpoints_dir, "best_checkpoint.pth"))
     train_model(model, args.model_name, criterion, optimizer, exp_lr_scheduler, early_stopping, args.save_interval, args.test_interval, args.checkpoints_dir, args.epochs)
 
