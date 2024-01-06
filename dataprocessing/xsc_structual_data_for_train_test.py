@@ -14,6 +14,8 @@ import os
 
 # 最多140种颜色?
 MAX_COLORS = 140
+# 最多保存多少个小区快信息
+MAX_SMALL_AREA_INFO = 100
 
 def get_color_based16(clr_str):
     r = int(clr_str[0:2], 16)
@@ -26,8 +28,9 @@ def get_color_based16(clr_str):
 def get_stat_info(data):
     ave_val = np.mean(np.array(data)) # 79.09247191011237
     max_val = np.max(np.array(data))
+    min_val = np.min(np.array(data))
     std_val = np.std(np.array(data))  # 24.377676506738464
-    return ave_val, max_val, std_val
+    return ave_val, max_val, min_val, std_val
 
 
 def get_block_index(mask, im_array, block_size):
@@ -43,18 +46,20 @@ def get_block_index(mask, im_array, block_size):
     if not np.isnan(meanx):
         blkx = min(int(meanx // blocksize_x), N-1)
         blky = min(int(meany // blocksize_y), N-1)
-        blk_ind = int(blky * N + blkx)
+        # 坐标比例,衡量其离边界的距离
+        blkx_ratio = max(meanx / im_array.shape[1], 0)
+        blky_ratio = max(meany / im_array.shape[0], 0)
     else:
-        blk_ind = -1
+        return -1, -1, -1, -1
 
-    return blk_ind
+    return blkx, blky, blkx_ratio, blky_ratio
 
 
 def get_block_info(img_root, id, blocks_list, total_blocks_num, colors_list):
     img_path = os.path.join(img_root, id)
     if not os.path.exists(img_path):
         print(f'{img_path} do not exist!')
-        return False, 0, 0, 0, 0
+        return False, 0, 0, 0, 0, 0
     try:
         im = Image.open(img_path)
         if im.mode == 'RGBA':
@@ -65,7 +70,7 @@ def get_block_info(img_root, id, blocks_list, total_blocks_num, colors_list):
             im = Image.fromarray(rgb_info)
     except IOError:
         print(f'fail to open {img_path}')
-        return False, 0, 0, 0, 0
+        return False, 0, 0, 0, 0, 0
 
     im_array = np.array(im)
 
@@ -73,30 +78,39 @@ def get_block_info(img_root, id, blocks_list, total_blocks_num, colors_list):
     blks_per_color = []
     area_per_color = []
     s = im_array.shape[0] * im_array.shape[1]
-    small_area_nums = [0] * 100   #[40,80,120,160,200,240,..]
-    block_counts = [0] * 100     #区域的平均分布，分为10*10区域
+    small_area_nums = [0] * 20   #[40,80,120,160,200,240,..]
+    small_area_info = []
+
+    N = 10  # 分割为N * N 的区域
+    block_counts = [0] * (N*N)     #区域的平均分布，分为N*N区域
+    blk_order = 0 # 记录当前的顺序
     for ind, blocks in enumerate(blocks_list):
         blk = blocks.split(',')
         rgb_list = []
         # 每一种颜色的面积
         total_area = 0
         for b in blk:
+            blk_order += 1
             bb = int(b) % 256
             gg = int(b) // 256
             rr = 0
             rgb_list.append([rr, gg, bb])
             mask = np.all(im_array == (rr, gg, bb), axis=-1)
             area = np.sum(mask == True)
-            # 小区域的个数
-            if area//40 < 100:
-                small_area_nums[area//40] += 1
-            # 总区域大小
-            total_area += area
 
             # 当前blcok所在的区块
-            ind = get_block_index(mask, im_array, 10)
-            if ind>=0:
+            indx, indy, indx_ratio, indy_ratio = get_block_index(mask, im_array, N)
+            if indx>=0:
+                ind = int(indy * N + indx)
                 block_counts[ind] += 1
+
+            # 小区域的信息
+            if area//40 < 20:
+                small_area_nums[area//40] += 1
+                # 保存了小区块的顺序，面积大小，所在的坐标
+                small_area_info.append([blk_order/total_blocks_num, area, indx_ratio, indy_ratio])
+            # 总区域大小
+            total_area += area
 
         blks_per_color.append(len(blk)/total_blocks_num)
         area_per_color.append(total_area/s)
@@ -109,12 +123,24 @@ def get_block_info(img_root, id, blocks_list, total_blocks_num, colors_list):
         blks_per_color = blks_per_color + t
         area_per_color = area_per_color + t
     elif margin < 0:
-        flag = False
+        blks_per_color = blks_per_color[0:MAX_COLORS]
+        area_per_color = area_per_color[0:MAX_COLORS]
+
+    # 最小区块的信息
+    margin = MAX_SMALL_AREA_INFO - len(small_area_info)
+    if margin > 0:
+        t = [0,0,0,0] * margin
+        small_area_info = small_area_info + t
+    # 选取面积最小的几个区域
+    else:
+        x = np.array(small_area_info)
+        x = x[x[:, 1].argsort()]
+        small_area_info = x[0:MAX_SMALL_AREA_INFO, :].tolist()
 
     # 归一化
     block_counts = [num / total_blocks_num for num in block_counts]
 
-    return flag, blks_per_color, area_per_color, small_area_nums, block_counts
+    return flag, blks_per_color, area_per_color, small_area_nums, small_area_info, block_counts
 
 
 def main_thread(i, total_num, total_color_num, time, hint, img_root_path, ids, total_block_num, plan):
@@ -131,14 +157,15 @@ def main_thread(i, total_num, total_color_num, time, hint, img_root_path, ids, t
 
     # 获取每个色块的区块个数占比，以及面积占比;
     # 如果色块数超过最大值，这个样本不考虑;
-    flag, blks_per_color, area_per_color, small_area_nums, block_counts = get_block_info(img_root_path, key, blk_index, total_block_num[i], blk_color)
+    flag, blks_per_color, area_per_color, small_area_nums, small_area_info, block_counts = (
+        get_block_info(img_root_path, key, blk_index, total_block_num[i], blk_color))
     if not flag:
         print(f'file id = {id}, color num={total_color_num[i]}, exceed {MAX_COLORS}....drop it')
         return {}
-    print(f'small areas:{small_area_nums[0:10]}, block_dist:{block_counts[0:5]}, time={time[i]}, total_block_num={total_block_num[i]}')
+    print(f'small areas:{small_area_info[0:3]}, block_dist:{block_counts[0:5]}, time={time[i]}, total_block_num={total_block_num[i]}')
 
     data = {}
-    data[ids[i] + ".png"] = [total_color_num[i], total_block_num[i], blks_per_color, area_per_color, small_area_nums, block_counts, hint[i], time[i]]
+    data[ids[i] + ".png"] = [total_color_num[i], total_block_num[i], blks_per_color, area_per_color, small_area_nums, small_area_info, block_counts, hint[i], time[i]]
     return data
 
 
@@ -156,14 +183,14 @@ def get_all_data_info(cvs_file_path, whole_json_path, img_root_path):
     hint = book_1['hint'].values.tolist()
 
     # 求色号和色块数等的均值和标准差
-    ave_clr_num, max_clr_num, std_clr_num = get_stat_info(total_color_num)
+    ave_clr_num, max_clr_num, _, std_clr_num = get_stat_info(total_color_num)
     print(f'ave_color_num={ave_clr_num}, max={max_clr_num}, std={std_clr_num}')
-    ave_blk_num, max_blk_num, std_blk_num = get_stat_info(total_block_num)
+    ave_blk_num, max_blk_num, _, std_blk_num = get_stat_info(total_block_num)
     print(f'ave_block_num={ave_blk_num}, max={max_blk_num}, std={std_blk_num}')
-    ave_hint, max_hint, std_hint = get_stat_info(hint)
+    ave_hint, max_hint, _, std_hint = get_stat_info(hint)
     print(f'ave_hit={ave_hint}, max={max_hint}, std={std_hint}')
-    ave_time, max_time, std_time = get_stat_info(time)
-    print(f'ave_hit={ave_time}, max={max_time}, std={std_time}')
+    ave_time, max_time, min_time, std_time = get_stat_info(time)
+    print(f'ave_time={ave_time}, max={max_time}, min={min_time}, std={std_time}')
 
     # ----处理色号对应的色块数量特征 -------------
     plan = {}
@@ -198,6 +225,7 @@ def get_all_data_info(cvs_file_path, whole_json_path, img_root_path):
     data_size = list(range(0, total))
 
     data = {}
+    invalid_num = 0
     # 使用map进行并行处理
     with Pool(processes=8) as pool:
         # res = pool.map(main_thread,
@@ -214,30 +242,10 @@ def get_all_data_info(cvs_file_path, whole_json_path, img_root_path):
             # 如果返回不为空
             if res.get():
                 data.update(res.get())
+            else:
+                invalid_num += 1
 
-        # # 关闭进程池
-        # pool.close()
-        # pool.join()
-
-    # # 读取色号色块特征和时长
-    # for i in range(len(ids)-8000):
-    #     print(f'processing {i}/{len(ids)-8000}...')
-    #     id = ids[i]
-    #     key = str(id) + ".png"
-    #     if key not in plan:
-    #         continue
-    #     block_dict = plan[key]
-    #     blk_index = block_dict['blocks_index']
-    #     blk_color = block_dict['blocks_color']
-    #
-    #     # 获取每个色块的区块个数占比，以及面积占比;
-    #     # 如果色块数超过最大值，这个样本不考虑;
-    #     flag, blks_per_color, area_per_color, small_area_nums = get_block_info(img_root_path, key, blk_index, total_block_num[i], blk_color)
-    #     if not flag:
-    #         print(f'file id = {id}, color num={total_color_num[i]}, exceed {MAX_COLORS}....drop it')
-    #         continue
-    #     print(f'small areas:{small_area_nums}, time={time[i]}')
-    #     data[ids[i] + ".png"] = [total_color_num[i], total_block_num[i], blks_per_color, area_per_color, small_area_nums, hint[i], time[i]]
+    print(f"invalid samples size = {invalid_num}")
 
     # 将所有数据写入whole_original.json文件
     with open(whole_json_path, "w") as f:
@@ -269,6 +277,22 @@ def create_train_test_json(data, ratio=0.8):
     print("测试集大小:", len(test_data))
 # -------------------- 将数据分别写入train.json和test.json文件 ---------------------------------
 
+# 过滤一些可能的异常点
+def data_filter(data):
+    new_data = {}
+    print(f'original data length:{len(data)}')
+    three_sigma_count = 0
+    for key, value in data.items():
+        time = value[-1]
+        if time > 2400:
+            three_sigma_count += 1
+            continue
+        else:
+            new_data[key] = value
+    print(f'{three_sigma_count} items was filted')
+    print(f'filted data length:{len(new_data)}')
+    return new_data
+
 
 if __name__ == '__main__':
     # 输入的cvs文件
@@ -280,6 +304,10 @@ if __name__ == '__main__':
 
     img_root_path = "D://myproject//suoluetu"
     # img_root_path = "F:\data\乐信\PBN\PBN_TimePred\suoluetu"
+
     data = get_all_data_info(cvs_file_path, whole_json_path, img_root_path)
+
+    # with open(whole_json_path, "r") as r:
+    #     data = json.load(r)
     # 80%的训练数据
-    create_train_test_json(data, 0.85)
+    create_train_test_json(data, 0.88)
